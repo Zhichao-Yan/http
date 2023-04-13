@@ -206,6 +206,7 @@ void accept_request(int client)
     }
     url[i] = '\0';// 读取到URL
 
+    //处理通过get方法生成表单，在问好'?'后面添加字段
     char *q = NULL;
     if(strcasecmp(method, "GET") == 0)
     {
@@ -232,7 +233,7 @@ void accept_request(int client)
     if(stat(path,&st) == -1 ) // 表示失败了,没有权限或者没找到对象
     {
         while(get_line(client, buf, sizeof(buf)))
-        not_found(); // 404
+        NotFound(); // 404
     }else{
         printf("%s\n",path);
         if(cgi == 1)
@@ -241,18 +242,6 @@ void accept_request(int client)
         }
     }
     close(client);
-    /*
-
-    // 方法既不属于GET，也不属于POST
-    if(strcasecmp(method, "GET") != 0 && strcasecmp(method, "POST") != 0)
-    {
-        unimplemented(client);
-        return;
-    }
-    // 处理通过get方法生成表单，在问好'?'后面添加字段
-
-    */
-    //
 }
 
 
