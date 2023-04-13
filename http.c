@@ -22,7 +22,6 @@ int get_line(int sock, char *buf, int size);
 void accept_request(int client);
 void NotFound();
 void ServeFile(int client, const char *filename);
-
 void Headers(int client, const char *filename);
 void Cat(int client, FILE *resource);
 
@@ -231,8 +230,6 @@ void accept_request(int client)
     }
     method[i] = '\0';//要以0结尾，C风格字符串
     //printf("%s\n",method);
-    
-
     // 获取文件路径
     i = 0;
     while(ISspace(buf[j]) && ( j < sizeof(buf)))
@@ -275,7 +272,6 @@ void accept_request(int client)
         while(get_line(client, buf, sizeof(buf)))
         NotFound(); // 404
     }else{
-        printf("%s\n",path);
         if(cgi == 0)
         {
             ServeFile(client, path);
