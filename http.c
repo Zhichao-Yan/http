@@ -70,7 +70,6 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
     }else{ // POST
         while(get_line(client, buf, sizeof(buf)))
         {
-            printf("%s\n",buf);
             buf[15] = '\0'; // 取得到的一行的buf前面0-14个字符串与"Content-Length:"比较
             if (strcasecmp(buf, "Content-Length:") == 0) // 即取这个字段的值
                 content_length = atoi(&(buf[16])); // 取值，并将字符串转成整数
@@ -80,6 +79,8 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
             return;
         }
     }
+    sprintf(buf, "HTTP/1.0 200 OK\r\n");
+    send(client, buf, strlen(buf), 0);
     int cgi_output[2];
     int cgi_input[2];
     pid_t pid;
@@ -99,18 +100,60 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
         CannotExecute(client);
         return;
     }
+    // CGI读数据是从标准输入stdin，写数据是写到标准输出stdout
     // fork执行一次返回2个值，在父进程返回子进程的进程id，子进程返回0
     if(pid == 0) // 执行子进程
     {
-
+        char meth_env[255];
+        char query_env[255];
+        char length_env[255];
+        // 1代表标准输出，dup2将标准输出绑定到了cgi_output[1]指向的管道文件
+        // 代表着子进程的输出都将写入cgi_output的写入口1写入管道
+        dup2(cgi_output[1], 1); 
+        // 0代表标准输入，dup2将标准输入绑定到了cgi_input[0]
+        // 这意味着子进程将从cgi_input[0]口从管道cgi_input读取数据
+        dup2(cgi_input[0], 0);  
+        // 子进程复制了父进程创建的这两个管道，它们共享这两个管道用来通信
+        // 单个管道负责一个方向的通信 
+        // cgi_output负责从子进程到父进程的数据
+        // cgi_input 负责从父进程到子进程到数据
+        // 因此在子进程中，有必要关闭2个用不到的端口
+        close(cgi_output[0]);//关闭cgi_output管道的读取口
+        close(cgi_input[1]);// 关闭cgi_input管道的写入口
+        sprintf(meth_env, "REQUEST_METHOD=%s", method);
+        putenv(meth_env); // 给系统增加环境变量，如果本来有，就改变，没有就添加
+        if(strcasecmp(method, "GET") == 0) {
+            sprintf(query_env, "QUERY_STRING=%s", query_string); // 采用get方法时传输的信息
+            putenv(query_env); // 添加环境变量
+        }else{   /* POST */
+            sprintf(length_env, "CONTENT_LENGTH=%d", content_length);// 有效信息长度
+            putenv(length_env); // 添加环境变量
+        }
+        execl(path, path, NULL);
+        exit(0); //子进程结束
     }else{ // 执行父进程
-
+        char c;
+        int status;
+        close(cgi_output[1]); // 父进程关闭没必要的cgi_output管道写口，父进行用这个管道来读
+        close(cgi_input[0]); //  父进程关闭没必要的cgi_input管道读口，父进程用这个管道来写
+        if(strcasecmp(method, "POST") == 0){
+            
+            for(int i = 0; i < content_length; i++) {
+                recv(client, &c, 1, 0); // 从client读取content_length个字节
+                // write()会把参数c所指的内存写入1个字节到cgi_input[1]所指的文件内
+                write(cgi_input[1], &c, 1); // 然后将这个字节数据写入cgi_input管道
+            }
+        }
+        // 读取cgi程序写入的数据
+        // read函数从文件cgi_output[0]读取期望1个字节到C中，出错返回-1，否则实际读取到字节数
+        while(read(cgi_output[0], &c, 1) > 0)
+            send(client, &c, 1, 0); // 发送给client
+        close(cgi_output[0]);
+        close(cgi_input[1]);
+        // 等待子进程结束，没有结束父进程阻塞
+        waitpid(pid, &status, 0);// 等待进程pid子进程结束，status返回子进程退出状态
     }
-    return;
 }
-
-
-
 
 
 void Headers(int client, const char *filename)
