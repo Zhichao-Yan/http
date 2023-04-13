@@ -210,13 +210,6 @@ void accept_request(int client)
 {
     int cgi = 0;
     char buf[1024];
-    /*
-    int i = 1;
-    while(get_line(client, buf, sizeof(buf)) > 0)
-    {
-        printf("第%d行：%s\n",i++,buf);
-    }
-    */
     int num = get_line(client, buf, sizeof(buf));
     //printf("%s\n",buf);
     unsigned long i = 0,j = 0;
@@ -275,6 +268,8 @@ void accept_request(int client)
         if(cgi == 0)
         {
             ServeFile(client, path);
+        }else{
+
         }
     }
     close(client);
