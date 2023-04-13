@@ -13,6 +13,7 @@
 
 
 #define ISspace(x) isspace((int)(x)) // From <ctype.h>
+#define SERVER_STRING "Server: macOS Monterey 12.0.1(httpd-0.1.0)\r\n"
 
 int startup(u_short *port);
 void error_die(const char *sc);
@@ -22,10 +23,34 @@ void accept_request(int client);
 void NotFound();
 void ServeFile(int client, const char *filename);
 
-void headers(int client, const char *filename);
-void cat(int client, FILE *resource);
+void Headers(int client, const char *filename);
+void Cat(int client, FILE *resource);
 
-
+void Headers(int client, const char *filename)
+{
+    char buf[1024];
+    //(void)filename;  /* could use filename to determine file type */
+    strcpy(buf, "HTTP/1.0 200 OK\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-Type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    return;
+}
+void Cat(int client, FILE *resource)
+{
+    char buf[1024];
+    fgets(buf, sizeof(buf), resource);
+    while (!feof(resource))
+    {
+        send(client, buf, strlen(buf), 0);
+        fgets(buf, sizeof(buf), resource);
+    }
+    return;
+}
 
 void NotFound()
 {
@@ -40,9 +65,8 @@ void ServeFile(int client, const char *filename)
         NotFound();
     else
     {
-        printf("open!!");
-        //headers(client, filename);
-        //cat(client, resource);
+        Headers(client, filename);
+        Cat(client, resource);
     }
     fclose(resource);
 }
