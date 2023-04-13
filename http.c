@@ -18,12 +18,25 @@
 int startup(u_short *port);
 void error_die(const char *sc);
 int get_line(int sock, char *buf, int size);
-
-void accept_request(int client);
-void NotFound();
 void ServeFile(int client, const char *filename);
 void Headers(int client, const char *filename);
 void Cat(int client, FILE *resource);
+
+
+
+void accept_request(int client);
+void NotFound();
+
+
+
+void execute_cgi(int client, const char *path,const char *method, const char *query_string)
+{
+
+}
+
+
+
+
 
 void Headers(int client, const char *filename)
 {
@@ -257,12 +270,12 @@ void accept_request(int client)
     sprintf(path, "htdocs%s", url); //加上htdoc生成源文件的路径
     if(path[strlen(path) - 1] == '/') // 自动添加index.html，默认访问时返回主页index.html
         strcat(path, "index.html");
-    //printf("%s\n",path);
+    printf("%s\n",path);
 
     struct stat st; // 用于保存文件状态
     if(stat(path,&st) == -1 ) // 表示失败了,没有权限或者没找到对象
     {
-        while(get_line(client, buf, sizeof(buf)))
+        while(get_line(client, buf, sizeof(buf)));
         NotFound(); // 404
     }else{
         if(cgi == 0)
