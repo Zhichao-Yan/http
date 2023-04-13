@@ -66,7 +66,7 @@ void Cat(int client, FILE *resource)
 
 void NotFound()
 {
-    printf("404 error");
+    printf("404 error\n");
 }
 
 void ServeFile(int client, const char *filename)
