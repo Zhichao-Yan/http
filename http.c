@@ -20,8 +20,10 @@ int get_line(int sock, char *buf, int size);
 
 void accept_request(int client);
 void NotFound();
-void unimplemented(int);
+void ServeFile(int client, const char *filename);
 
+void headers(int client, const char *filename);
+void cat(int client, FILE *resource);
 
 
 
@@ -30,6 +32,20 @@ void NotFound()
     printf("404 error");
 }
 
+void ServeFile(int client, const char *filename)
+{
+    FILE *resource = NULL;
+    resource = fopen(filename, "r");
+    if (resource == NULL)
+        NotFound();
+    else
+    {
+        printf("open!!");
+        //headers(client, filename);
+        //cat(client, resource);
+    }
+    fclose(resource);
+}
 
 /**********************************************************************/
 /* Print out an error message with perror() (for system errors; based
@@ -236,9 +252,9 @@ void accept_request(int client)
         NotFound(); // 404
     }else{
         printf("%s\n",path);
-        if(cgi == 1)
+        if(cgi == 0)
         {
-
+            ServeFile(client, path);
         }
     }
     close(client);
