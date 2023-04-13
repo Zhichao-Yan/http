@@ -1,14 +1,14 @@
 #include <stdio.h> // 标准输入输头文件
-#include <stdlib.h> // 标准库头文件 
+#include <stdlib.h> // 标准库头文件 atoi转换
 #include <sys/types.h> // 
 #include <sys/socket.h>
 #include <netinet/in.h> // Internet Protocol family
 #include <string.h> // 需要用到字符串比较函数
 #include <ctype.h> // 字符类型判断
 #include <sys/stat.h> // 获取文件状态
-
 // 是Unix Standard的缩写，所定义的接口通常都是大量针对系统调用的封装
 // provides access to the POSIX operating system API
+// 如fork()、pipe()
 #include <unistd.h> 
 
 
@@ -21,17 +21,92 @@ int get_line(int sock, char *buf, int size);
 void ServeFile(int client, const char *filename);
 void Headers(int client, const char *filename);
 void Cat(int client, FILE *resource);
-
-
-
+void NotFound(int client);
 void accept_request(int client);
-void NotFound();
+void BadRequest(int client);
+void CannotExecute(int client);
 
+
+
+
+
+void CannotExecute(int client)
+{
+    char buf[1024];
+    sprintf(buf, "HTTP/1.0 500 Internal Server Error\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
+    send(client, buf, strlen(buf), 0);
+    return;
+}
+void BadRequest(int client)
+{
+    char buf[1024];
+    sprintf(buf, "HTTP/1.0 400 BAD REQUEST\r\n");
+    send(client, buf, sizeof(buf), 0);
+    sprintf(buf, "Content-type: text/html\r\n");
+    send(client, buf, sizeof(buf), 0);
+    sprintf(buf, "\r\n");
+    send(client, buf, sizeof(buf), 0);
+    sprintf(buf, "<P>Your browser sent a bad request, ");
+    send(client, buf, sizeof(buf), 0);
+    sprintf(buf, "such as a POST without a Content-Length.\r\n");
+    send(client, buf, sizeof(buf), 0);
+    return;
+}
 
 
 void execute_cgi(int client, const char *path,const char *method, const char *query_string)
 {
+    char buf[1024];
+    int content_length = -1;
+    if(strcasecmp(method, "GET") == 0)
+    {
+        while(get_line(client, buf, sizeof(buf))); /* read & discard headers */
+    }else{ // POST
+        while(get_line(client, buf, sizeof(buf)))
+        {
+            printf("%s\n",buf);
+            buf[15] = '\0'; // 取得到的一行的buf前面0-14个字符串与"Content-Length:"比较
+            if (strcasecmp(buf, "Content-Length:") == 0) // 即取这个字段的值
+                content_length = atoi(&(buf[16])); // 取值，并将字符串转成整数
+        }
+        if (content_length == -1) {
+            BadRequest(client);
+            return;
+        }
+    }
+    int cgi_output[2];
+    int cgi_input[2];
+    pid_t pid;
+    // 创建管道用于进程间通信，失败时返回 -1，只能永远有血缘关系的进程之间通信
+    // cgi_output[0]只能读，不能写，cgi_output[1]只能写不能读，即cgi_output是单向流动的
+    if (pipe(cgi_output) < 0) {
+        CannotExecute(client);
+        return;
+    }
+    // cgi_input是相对于cgi_output的另外一条管道，通信方向不一样
+    if(pipe(cgi_input) < 0) {
+        CannotExecute(client);
+        return;
+    }
+    // 创建一个子进程，这个子进程用于指向cgi程序
+    if ((pid = fork()) < 0 ) {
+        CannotExecute(client);
+        return;
+    }
+    // fork执行一次返回2个值，在父进程返回子进程的进程id，子进程返回0
+    if(pid == 0) // 执行子进程
+    {
 
+    }else{ // 执行父进程
+
+    }
+    return;
 }
 
 
@@ -64,9 +139,28 @@ void Cat(int client, FILE *resource)
     return;
 }
 
-void NotFound()
+void NotFound(int client)
 {
-    printf("404 error\n");
+    char buf[1024];
+    sprintf(buf, "HTTP/1.0 404 NOT FOUND\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "Content-Type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "your request because the resource specified\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "is unavailable or nonexistent.\r\n");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "</BODY></HTML>\r\n");
+    send(client, buf, strlen(buf), 0);
+    return;
 }
 
 void ServeFile(int client, const char *filename)
@@ -74,7 +168,7 @@ void ServeFile(int client, const char *filename)
     FILE *resource = NULL;
     resource = fopen(filename, "r");
     if (resource == NULL)
-        NotFound();
+        NotFound(client);
     else
     {
         Headers(client, filename);
@@ -205,6 +299,8 @@ int get_line(int sock, char *buf, int size)
                 size_t = recv(sock,&c,1,0); // '\n'读取出去，这个时候表示一行读取结束
                 break;
             }else{
+                if(c == '\n')
+                    break;
                 buf[i] = c;
                 i++;
             }
@@ -249,6 +345,7 @@ void accept_request(int client)
     }
     url[i] = '\0';// 读取到URL
 
+    
     //处理通过get方法生成表单，在问好'?'后面添加字段
     char *q = NULL;
     if(strcasecmp(method, "GET") == 0)
@@ -263,26 +360,27 @@ void accept_request(int client)
             q++;
         }
     }
-    if (strcasecmp(method, "POST") == 0)
+    if(strcasecmp(method, "POST") == 0)
+    {
         cgi = 1;
+    }    
 
     char path[512];
     sprintf(path, "htdocs%s", url); //加上htdoc生成源文件的路径
     if(path[strlen(path) - 1] == '/') // 自动添加index.html，默认访问时返回主页index.html
         strcat(path, "index.html");
-    printf("%s\n",path);
 
     struct stat st; // 用于保存文件状态
     if(stat(path,&st) == -1 ) // 表示失败了,没有权限或者没找到对象
     {
         while(get_line(client, buf, sizeof(buf)));
-        NotFound(); // 404
+        NotFound(client); // 404
     }else{
         if(cgi == 0)
         {
             ServeFile(client, path);
         }else{
-
+            execute_cgi(client,path,method,q);
         }
     }
     close(client);
