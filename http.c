@@ -25,7 +25,7 @@ void NotFound(int client);
 void accept_request(int client);
 void BadRequest(int client);
 void CannotExecute(int client);
-
+void execute_cgi(int client, const char *path,const char *method, const char *query_string);
 
 
 
@@ -74,7 +74,7 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
             if (strcasecmp(buf, "Content-Length:") == 0) // 即取这个字段的值
                 content_length = atoi(&(buf[16])); // 取值，并将字符串转成整数
         }
-        if (content_length == -1) {
+        if(content_length == -1) {
             BadRequest(client);
             return;
         }
