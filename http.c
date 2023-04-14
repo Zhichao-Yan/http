@@ -10,17 +10,22 @@
 // provides access to the POSIX operating system API
 // 如fork()、pipe()
 #include <unistd.h> 
+#include <time.h>
 
 
 #define ISspace(x) isspace((int)(x)) // From <ctype.h>
 #define SERVER_STRING "Server: macOS Monterey 12.0.1(httpd-0.1.0)\r\n"
 
 int startup(u_short *port);
+
+int GetLine(int sock, char *buf, int size);
+
 void error_die(const char *sc);
-int get_line(int sock, char *buf, int size);
+
 void ServeFile(int client, const char *filename);
 void Headers(int client, const char *filename);
 void Cat(int client, FILE *resource);
+void OK(int client);
 void NotFound(int client);
 void accept_request(int client);
 void BadRequest(int client);
@@ -62,13 +67,15 @@ void BadRequest(int client)
 
 void execute_cgi(int client, const char *path,const char *method, const char *query_string)
 {
+    char c;
+    int status;
     char buf[1024];
     int content_length = -1;
     if(strcasecmp(method, "GET") == 0)
     {
-        while(get_line(client, buf, sizeof(buf))); /* read & discard headers */
+        while(GetLine(client, buf, sizeof(buf))); 
     }else{ // POST
-        while(get_line(client, buf, sizeof(buf)))
+        while(GetLine(client, buf, sizeof(buf)))
         {
             buf[15] = '\0'; // 取得到的一行的buf前面0-14个字符串与"Content-Length:"比较
             if (strcasecmp(buf, "Content-Length:") == 0) // 即取这个字段的值
@@ -79,8 +86,9 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
             return;
         }
     }
-    sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    send(client, buf, strlen(buf), 0);
+    //sprintf(buf, "HTTP/1.0 200 OK\r\n");
+    //send(client, buf, strlen(buf), 0);
+    OK(client);
     int cgi_output[2];
     int cgi_input[2];
     pid_t pid;
@@ -125,15 +133,14 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
         if(strcasecmp(method, "GET") == 0) {
             sprintf(query_env, "QUERY_STRING=%s", query_string); // 采用get方法时传输的信息
             putenv(query_env); // 添加环境变量
-        }else{   /* POST */
+        }else{  
             sprintf(length_env, "CONTENT_LENGTH=%d", content_length);// 有效信息长度
             putenv(length_env); // 添加环境变量
         }
-        execl(path, path, NULL);
+        if(execl(path, path, NULL) < 0)
+            CannotExecute(client);
         exit(0); //子进程结束
     }else{ // 执行父进程
-        char c;
-        int status;
         close(cgi_output[1]); // 父进程关闭没必要的cgi_output管道写口，父进行用这个管道来读
         close(cgi_input[0]); //  父进程关闭没必要的cgi_input管道读口，父进程用这个管道来写
         if(strcasecmp(method, "POST") == 0){
@@ -147,7 +154,9 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
         // 读取cgi程序写入的数据
         // read函数从文件cgi_output[0]读取期望1个字节到C中，出错返回-1，否则实际读取到字节数
         while(read(cgi_output[0], &c, 1) > 0)
+        {
             send(client, &c, 1, 0); // 发送给client
+        }
         close(cgi_output[0]);
         close(cgi_input[1]);
         // 等待子进程结束，没有结束父进程阻塞
@@ -159,7 +168,6 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
 void Headers(int client, const char *filename)
 {
     char buf[1024];
-    //(void)filename;  /* could use filename to determine file type */
     strcpy(buf, "HTTP/1.0 200 OK\r\n");
     send(client, buf, strlen(buf), 0);
     strcpy(buf, SERVER_STRING);
@@ -174,7 +182,7 @@ void Cat(int client, FILE *resource)
 {
     char buf[1024];
     fgets(buf, sizeof(buf), resource);
-    while (!feof(resource))
+    while(!feof(resource))
     {
         send(client, buf, strlen(buf), 0);
         fgets(buf, sizeof(buf), resource);
@@ -206,16 +214,33 @@ void NotFound(int client)
     return;
 }
 
+void OK(int client)
+{
+    char buf[1024];
+    strcpy(buf, "HTTP/1.0 200 OK\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, SERVER_STRING);
+    send(client, buf, strlen(buf), 0);
+    time_t t;
+    time(&t);
+    sprintf(buf, "Time: %s",asctime(gmtime(&t)));
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, "Content-Type: text/html\r\n");
+    send(client, buf, strlen(buf), 0);
+    strcpy(buf, "\r\n");
+    send(client, buf, strlen(buf), 0);
+    return;
+}
 void ServeFile(int client, const char *filename)
 {
     FILE *resource = NULL;
     resource = fopen(filename, "r");
-    if (resource == NULL)
+    if(resource == NULL)
         NotFound(client);
     else
     {
-        Headers(client, filename);
-        Cat(client, resource);
+        OK(client);
+        Cat(client,resource);
     }
     fclose(resource);
 }
@@ -318,15 +343,12 @@ int startup(u_short *port)
     return(httpd); // 返回系统socket套接字文件描述符
 }
 
-
-
 /**********************************************************************/
-/* 
- * 从请求报文中获取一行
+/* 从请求报文中获取一行
  * 返回读取的字符数目，不包括
  * */
 /**********************************************************************/
-int get_line(int sock, char *buf, int size)
+int GetLine(int sock, char *buf, int size)
 {
     int i = 0;
     char c = '\0';
@@ -339,11 +361,9 @@ int get_line(int sock, char *buf, int size)
         {
             if(c == '\r')
             {
-                size_t = recv(sock,&c,1,0); // '\n'读取出去，这个时候表示一行读取结束
+                recv(sock,&c,1,0); // '\n'读取出去，这个时候表示一行读取结束
                 break;
             }else{
-                if(c == '\n')
-                    break;
                 buf[i] = c;
                 i++;
             }
@@ -360,9 +380,11 @@ int get_line(int sock, char *buf, int size)
 /**********************************************************************/
 void accept_request(int client)
 {
-    int cgi = 0;
+    int  cgi = 0;
     char buf[1024];
-    int num = get_line(client, buf, sizeof(buf));
+    GetLine(client, buf, sizeof(buf));
+    //处理通过get方法生成表单，在问好'?'后面添加字段
+    char *query_string = NULL;
     //printf("%s\n",buf);
     unsigned long i = 0,j = 0;
     // 获取方法字符串
@@ -375,7 +397,7 @@ void accept_request(int client)
     }
     method[i] = '\0';//要以0结尾，C风格字符串
     //printf("%s\n",method);
-    // 获取文件路径
+    // 获取链接路径
     i = 0;
     while(ISspace(buf[j]) && ( j < sizeof(buf)))
         j++; // 跳过空格
@@ -388,49 +410,47 @@ void accept_request(int client)
     }
     url[i] = '\0';// 读取到URL
 
-    
-    //处理通过get方法生成表单，在问好'?'后面添加字段
-    char *q = NULL;
+    if(strcasecmp(method, "GET") && strcasecmp(method, "POST"))//既不是GET也不是POST
+    {
+        // 暂时未实现
+        close(client);
+        return;
+    }
     if(strcasecmp(method, "GET") == 0)
     {
-        q = url;
-        while((*q != '?') && (*q != '\0'))
-            q++;
-        if(*q == '?')
-        {
-            cgi = 1;// 
-            *q = '\0'; // 把路径和后面的字段隔开
-            q++;
-        }
+        while(GetLine(client, buf, sizeof(buf)));//清空GET请求头，否则位情况就关闭会导致出错
+        cgi = 0;
     }
     if(strcasecmp(method, "POST") == 0)
     {
+        //printf("动态文件1");
         cgi = 1;
-    }    
+    } 
 
+    //加上htdoc生成源文件的路径
     char path[512];
-    sprintf(path, "htdocs%s", url); //加上htdoc生成源文件的路径
+    sprintf(path, "htdocs%s", url); 
     if(path[strlen(path) - 1] == '/') // 自动添加index.html，默认访问时返回主页index.html
         strcat(path, "index.html");
-
+    //printf("%s\n",path);
     struct stat st; // 用于保存文件状态
     if(stat(path,&st) == -1 ) // 表示失败了,没有权限或者没找到对象
     {
-        while(get_line(client, buf, sizeof(buf)));
         NotFound(client); // 404
     }else{
-        if(cgi == 0)
+        // 文件是可执行文件，并且使用GET方法 如请求头 Get /color.cgi HTTP1.0，且没有参数
+        // 当然你需要查看或者改变color.cgi脚步的执行权限
+        if((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH))
+            cgi = 1;
+        if(cgi == 0) // 静态文件
         {
-            ServeFile(client, path);
-        }else{
-            execute_cgi(client,path,method,q);
+            ServeFile(client,path);
+        }else{ // 请求动态文件
+            execute_cgi(client,path,method,NULL);
         }
     }
     close(client);
 }
-
-
-
 
 int main()
 {
@@ -460,6 +480,7 @@ int main()
         if (client_sock == -1)
             error_die("accept");
         else{
+            //printf("accept\n");
             accept_request(client_sock);
         }
     }
