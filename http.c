@@ -186,6 +186,7 @@ void Cat(int client, FILE *resource)
     fgets(buf, sizeof(buf), resource);
     while(!feof(resource))
     {
+        //printf("%s",buf);
         send(client, buf, strlen(buf), 0);
         fgets(buf, sizeof(buf), resource);
     }
