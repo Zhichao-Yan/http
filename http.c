@@ -21,7 +21,7 @@ int GetLine(int sock, char *buf, int size);
 void OK(int client);
 void NotFound(int client);
 void ServeFile(int client, const char *filename);
-void Cat(int client, FILE *resource);
+void Cat(int client, const char *filename);
 void accept_request(int client);
 void Execute(int client, const char *path,const char *method, const char *query_string);
 
@@ -223,27 +223,27 @@ void OK(int client)
 }
 void ServeFile(int client, const char *filename)
 {
+    OK(client);
+    Cat(client,filename);
+    return;
+}
+void Cat(int client, const char *filename)
+{
     FILE *resource = NULL;
     resource = fopen(filename, "r");
     if(resource == NULL)
-        NotFound(client);
-    else
     {
-        OK(client);
-        Cat(client,resource);
+        NotFound(client);
+    }else{
+        char buf[1024];
+        fgets(buf, sizeof(buf), resource);
+        while(!feof(resource))
+        {
+            send(client, buf, strlen(buf), 0);
+            fgets(buf, sizeof(buf), resource);
+        }
     }
     fclose(resource);
-}
-void Cat(int client, FILE *resource)
-{
-    char buf[1024];
-    fgets(buf, sizeof(buf), resource);
-    while(!feof(resource))
-    {
-        //printf("%s",buf);
-        send(client, buf, strlen(buf), 0);
-        fgets(buf, sizeof(buf), resource);
-    }
     return;
 }
 /**********************************************************************/
