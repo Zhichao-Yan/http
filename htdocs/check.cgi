@@ -5,7 +5,7 @@ use CGI;
 
 my($cgi) = new CGI;
 
-print $cgi->header('text/html');
+# print $cgi->header('text/html');
 print $cgi->start_html(-title => "Example CGI script",
                        -BGCOLOR => 'red');
 print $cgi->h1("CGI Example");

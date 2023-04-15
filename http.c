@@ -17,8 +17,10 @@
 #define SERVER_STRING "Server: macOS Monterey 12.0.1(httpd-0.1.0)\r\n"
 
 int startup(u_short *port);
-
 int GetLine(int sock, char *buf, int size);
+
+
+
 
 void error_die(const char *sc);
 
@@ -30,7 +32,7 @@ void NotFound(int client);
 void accept_request(int client);
 void BadRequest(int client);
 void CannotExecute(int client);
-void execute_cgi(int client, const char *path,const char *method, const char *query_string);
+void Execute(int client, const char *path,const char *method, const char *query_string);
 
 
 
@@ -65,16 +67,14 @@ void BadRequest(int client)
 }
 
 
-void execute_cgi(int client, const char *path,const char *method, const char *query_string)
+void Execute(int client, const char *path,const char *method, const char *query_string)
 {
     char c;
     int status;
     char buf[1024];
     int content_length = -1;
-    if(strcasecmp(method, "GET") == 0)
+    if(strcasecmp(method, "POST") == 0) // 如果是POST得获取content_length大小，GET啥也不做
     {
-        while(GetLine(client, buf, sizeof(buf))); 
-    }else{ // POST
         while(GetLine(client, buf, sizeof(buf)))
         {
             buf[15] = '\0'; // 取得到的一行的buf前面0-14个字符串与"Content-Length:"比较
@@ -86,9 +86,8 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
             return;
         }
     }
-    //sprintf(buf, "HTTP/1.0 200 OK\r\n");
-    //send(client, buf, strlen(buf), 0);
-    OK(client);
+    OK(client); // 输出响应头
+
     int cgi_output[2];
     int cgi_input[2];
     pid_t pid;
@@ -113,8 +112,6 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
     if(pid == 0) // 执行子进程
     {
         char meth_env[255];
-        char query_env[255];
-        char length_env[255];
         // 1代表标准输出，dup2将标准输出绑定到了cgi_output[1]指向的管道文件
         // 代表着子进程的输出都将写入cgi_output的写入口1写入管道
         dup2(cgi_output[1], 1); 
@@ -130,16 +127,21 @@ void execute_cgi(int client, const char *path,const char *method, const char *qu
         close(cgi_input[1]);// 关闭cgi_input管道的写入口
         sprintf(meth_env, "REQUEST_METHOD=%s", method);
         putenv(meth_env); // 给系统增加环境变量，如果本来有，就改变，没有就添加
+        // 如果是GET方法，那么CGI程序要从QUERY_STRING中读取信息
         if(strcasecmp(method, "GET") == 0) {
+            char query_env[255];
             sprintf(query_env, "QUERY_STRING=%s", query_string); // 采用get方法时传输的信息
             putenv(query_env); // 添加环境变量
         }else{  
+            // 如果是POST方法，那么CGI程序要根据这个CONTENT_LENGTH从标准输入读取信息
+            char length_env[255];
             sprintf(length_env, "CONTENT_LENGTH=%d", content_length);// 有效信息长度
             putenv(length_env); // 添加环境变量
         }
-        if(execl(path, path, NULL) < 0)
-            CannotExecute(client);
+        // 没有权限，那么无法执行该CGI程序
+        if(execl(path, path, NULL) < 0) // 无法执行会返回-1 
         exit(0); //子进程结束
+
     }else{ // 执行父进程
         close(cgi_output[1]); // 父进程关闭没必要的cgi_output管道写口，父进行用这个管道来读
         close(cgi_input[0]); //  父进程关闭没必要的cgi_input管道读口，父进程用这个管道来写
@@ -419,7 +421,16 @@ void accept_request(int client)
     if(strcasecmp(method, "GET") == 0)
     {
         while(GetLine(client, buf, sizeof(buf)));//清空GET请求头，否则位情况就关闭会导致出错
-        cgi = 0;
+        // GET方法也可以提交表单信息，是在url+'?'+xxx==xxx'
+        query_string = url;
+        while((*query_string != '?') && (*query_string != '\0'))
+            query_string++;
+        if (*query_string == '?')
+        {
+            cgi = 1;
+            *query_string = '\0';
+            query_string++;
+        }
     }
     if(strcasecmp(method, "POST") == 0)
     {
@@ -438,7 +449,8 @@ void accept_request(int client)
     {
         NotFound(client); // 404
     }else{
-        // 文件是可执行文件，并且使用GET方法 如请求头 Get /color.cgi HTTP1.0，且没有参数
+        // 文件是可执行文件，并且使用GET方法 如请求头 Get /color.cgi HTTP1.0，无论有没有参数
+        // 否则文件只是会单纯显示出来
         // 当然你需要查看或者改变color.cgi脚步的执行权限
         if((st.st_mode & S_IXUSR) || (st.st_mode & S_IXGRP) || (st.st_mode & S_IXOTH))
             cgi = 1;
@@ -446,7 +458,7 @@ void accept_request(int client)
         {
             ServeFile(client,path);
         }else{ // 请求动态文件
-            execute_cgi(client,path,method,NULL);
+            Execute(client,path,method,query_string);
         }
     }
     close(client);
