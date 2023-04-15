@@ -18,21 +18,17 @@
 
 int startup(u_short *port);
 int GetLine(int sock, char *buf, int size);
-
-
-
-
-void error_die(const char *sc);
-
-void ServeFile(int client, const char *filename);
-void Headers(int client, const char *filename);
-void Cat(int client, FILE *resource);
 void OK(int client);
 void NotFound(int client);
+void ServeFile(int client, const char *filename);
+void Cat(int client, FILE *resource);
 void accept_request(int client);
+void Execute(int client, const char *path,const char *method, const char *query_string);
+
+void error_die(const char *sc);
 void BadRequest(int client);
 void CannotExecute(int client);
-void Execute(int client, const char *path,const char *method, const char *query_string);
+
 
 
 
@@ -167,31 +163,6 @@ void Execute(int client, const char *path,const char *method, const char *query_
 }
 
 
-void Headers(int client, const char *filename)
-{
-    char buf[1024];
-    strcpy(buf, "HTTP/1.0 200 OK\r\n");
-    send(client, buf, strlen(buf), 0);
-    strcpy(buf, SERVER_STRING);
-    send(client, buf, strlen(buf), 0);
-    sprintf(buf, "Content-Type: text/html\r\n");
-    send(client, buf, strlen(buf), 0);
-    strcpy(buf, "\r\n");
-    send(client, buf, strlen(buf), 0);
-    return;
-}
-void Cat(int client, FILE *resource)
-{
-    char buf[1024];
-    fgets(buf, sizeof(buf), resource);
-    while(!feof(resource))
-    {
-        //printf("%s",buf);
-        send(client, buf, strlen(buf), 0);
-        fgets(buf, sizeof(buf), resource);
-    }
-    return;
-}
 
 void NotFound(int client)
 {
@@ -204,15 +175,31 @@ void NotFound(int client)
     send(client, buf, strlen(buf), 0);
     sprintf(buf, "\r\n");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<HTML><TITLE>Not Found</TITLE>\r\n");
+
+    sprintf(buf, "<HTML>");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<BODY><P>The server could not fulfill\r\n");
+
+    sprintf(buf, "<head>");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "your request because the resource specified\r\n");
+    sprintf(buf, "<meta charset='UTF-8'>");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "is unavailable or nonexistent.\r\n");
+    sprintf(buf, "<title>404</title>");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "</BODY></HTML>\r\n");
+    sprintf(buf, "</head>");
+    send(client, buf, strlen(buf), 0);  
+
+    sprintf(buf, "<BODY>");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<h1>404 NoFound!!!</h1>");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "<P>The server could not fulfill your request<br/>");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "because the resource specified is unavailable or nonexistent.</P>");
+    send(client, buf, strlen(buf), 0);
+    sprintf(buf, "</BODY>");
+    send(client, buf, strlen(buf), 0);
+
+    sprintf(buf, "</HTML>");
     send(client, buf, strlen(buf), 0);
     return;
 }
@@ -247,7 +234,18 @@ void ServeFile(int client, const char *filename)
     }
     fclose(resource);
 }
-
+void Cat(int client, FILE *resource)
+{
+    char buf[1024];
+    fgets(buf, sizeof(buf), resource);
+    while(!feof(resource))
+    {
+        //printf("%s",buf);
+        send(client, buf, strlen(buf), 0);
+        fgets(buf, sizeof(buf), resource);
+    }
+    return;
+}
 /**********************************************************************/
 /* Print out an error message with perror() (for system errors; based
  * on value of errno, which indicates system call errors) and exit the
