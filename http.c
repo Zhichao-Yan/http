@@ -24,12 +24,9 @@ void ServeFile(int client, const char *filename);
 void Cat(int client, const char *filename);
 void accept_request(int client);
 void Execute(int client, const char *path,const char *method, const char *query_string);
-
-void error_die(const char *sc);
 void BadRequest(int client);
 void CannotExecute(int client);
-
-
+void error_die(const char *sc);
 
 
 
@@ -42,7 +39,7 @@ void CannotExecute(int client)
     send(client, buf, strlen(buf), 0);
     sprintf(buf, "\r\n");
     send(client, buf, strlen(buf), 0);
-    sprintf(buf, "<P>Error prohibited CGI execution.\r\n");
+    sprintf(buf, "<P>CGI progam prohibited from execution.</p>");
     send(client, buf, strlen(buf), 0);
     return;
 }
@@ -55,9 +52,10 @@ void BadRequest(int client)
     send(client, buf, sizeof(buf), 0);
     sprintf(buf, "\r\n");
     send(client, buf, sizeof(buf), 0);
+
     sprintf(buf, "<P>Your browser sent a bad request, ");
     send(client, buf, sizeof(buf), 0);
-    sprintf(buf, "such as a POST without a Content-Length.\r\n");
+    sprintf(buf, "such as a POST without a Content-Length.</P>");
     send(client, buf, sizeof(buf), 0);
     return;
 }
@@ -136,8 +134,8 @@ void Execute(int client, const char *path,const char *method, const char *query_
         }
         // 没有权限，那么无法执行该CGI程序
         if(execl(path, path, NULL) < 0) // 无法执行会返回-1 
+            CannotExecute(client);
         exit(0); //子进程结束
-
     }else{ // 执行父进程
         close(cgi_output[1]); // 父进程关闭没必要的cgi_output管道写口，父进行用这个管道来读
         close(cgi_input[0]); //  父进程关闭没必要的cgi_input管道读口，父进程用这个管道来写
