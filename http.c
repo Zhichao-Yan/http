@@ -11,8 +11,6 @@
 // 如fork()、pipe()
 #include <unistd.h> 
 #include <time.h>
-
-
 #define ISspace(x) isspace((int)(x)) // From <ctype.h>
 #define SERVER_STRING "Server: macOS Monterey 12.0.1(httpd-0.1.0)\r\n"
 
@@ -284,6 +282,7 @@ int startup(u_short *port)
 
     // IP协议中定义网络字节序为大端序
     // converts the unsigned short integer hostshort from host byte order to network byte order.
+    *port = 49999;
     name.sin_port = htons(*port); 
     // converts the unsigned integer hostlong from host byte order to network byte order.
     // INADDR_ANY 表示任意地址 含义是让服务器端任意IP地址均可以做为服务器IP地址
@@ -305,6 +304,8 @@ int startup(u_short *port)
     * address_len----The size of address in bytes.
     * */
     /**********************************************************************/
+    int optval =1;
+    setsockopt(httpd,SOL_SOCKET,SO_REUSEADDR,(const void*)&optval,sizeof(int));
     if (bind(httpd, (struct sockaddr *)&name, sizeof(name)) == -1)
         error_die("bind");
     
