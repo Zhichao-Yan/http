@@ -2,3 +2,4 @@
 http
 http.dSYM
 .DS_store
+bin/
